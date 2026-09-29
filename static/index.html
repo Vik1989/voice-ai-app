@@ -1,0 +1,830 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Voice AI Assistant</title>
+  <link rel="manifest" href="/static/manifest.json">
+  <meta name="theme-color" content="#0b0f19">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  
+  <style>
+    :root {
+      --bg: #0b0f19;
+      --card-bg: rgba(30, 41, 59, 0.7);
+      --primary: #3b82f6;
+      --accent: #8b5cf6;
+      --green: #10b981;
+      --red: #ef4444;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+    }
+
+    /* Top Bar */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 20px;
+      backdrop-filter: blur(10px);
+      background: rgba(11, 15, 25, 0.8);
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-weight: 700;
+      font-size: 1.15rem;
+      letter-spacing: -0.5px;
+    }
+
+    .brand-icon {
+      width: 28px;
+      height: 28px;
+      background: linear-gradient(135deg, var(--primary), var(--accent));
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    .provider-pill {
+      font-size: 0.78rem;
+      padding: 5px 12px;
+      border-radius: 20px;
+      background: rgba(59, 130, 246, 0.15);
+      border: 1px solid rgba(59, 130, 246, 0.3);
+      color: #93c5fd;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .provider-pill:active {
+      transform: scale(0.97);
+    }
+
+    .settings-btn {
+      background: none;
+      border: none;
+      color: var(--text-muted);
+      font-size: 1.25rem;
+      cursor: pointer;
+      padding: 6px;
+      border-radius: 8px;
+    }
+
+    /* Main Container */
+    main {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 20px;
+      max-width: 600px;
+      width: 100%;
+      margin: 0 auto;
+    }
+
+    /* Voice Orb Centerpiece */
+    .orb-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 40px 0 20px 0;
+      width: 100%;
+    }
+
+    .orb-container {
+      position: relative;
+      width: 180px;
+      height: 180px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .orb-glow {
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(59, 130, 246, 0.4) 0%, rgba(139, 92, 246, 0.1) 60%, transparent 80%);
+      transition: all 0.4s ease;
+      filter: blur(8px);
+    }
+
+    .orb-button {
+      width: 130px;
+      height: 130px;
+      border-radius: 50%;
+      border: none;
+      outline: none;
+      cursor: pointer;
+      background: linear-gradient(135deg, #2563eb, #7c3aed);
+      box-shadow: 0 10px 30px rgba(59, 130, 246, 0.35);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      z-index: 2;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    .orb-button:active {
+      transform: scale(0.95);
+    }
+
+    .orb-icon {
+      font-size: 40px;
+      color: white;
+      transition: all 0.2s;
+    }
+
+    /* Orb States */
+    .orb-container.listening .orb-glow {
+      animation: pulse-ring 1.5s infinite;
+      background: radial-gradient(circle, rgba(239, 68, 68, 0.6) 0%, rgba(249, 115, 22, 0.2) 70%, transparent 80%);
+    }
+
+    .orb-container.listening .orb-button {
+      background: linear-gradient(135deg, #ef4444, #f97316);
+      box-shadow: 0 0 40px rgba(239, 68, 68, 0.6);
+      transform: scale(1.05);
+    }
+
+    .orb-container.thinking .orb-glow {
+      animation: spin-glow 2s linear infinite;
+      background: radial-gradient(circle, rgba(234, 179, 8, 0.5) 0%, rgba(59, 130, 246, 0.2) 70%, transparent 80%);
+    }
+
+    .orb-container.thinking .orb-button {
+      background: linear-gradient(135deg, #eab308, #3b82f6);
+    }
+
+    .orb-container.speaking .orb-glow {
+      animation: wave-ring 1.2s ease-in-out infinite alternate;
+      background: radial-gradient(circle, rgba(16, 185, 129, 0.6) 0%, rgba(59, 130, 246, 0.2) 70%, transparent 80%);
+    }
+
+    .orb-container.speaking .orb-button {
+      background: linear-gradient(135deg, #10b981, #06b6d4);
+      box-shadow: 0 0 35px rgba(16, 185, 129, 0.5);
+    }
+
+    @keyframes pulse-ring {
+      0% { transform: scale(0.9); opacity: 0.6; }
+      50% { transform: scale(1.35); opacity: 0.9; }
+      100% { transform: scale(0.9); opacity: 0.6; }
+    }
+
+    @keyframes wave-ring {
+      0% { transform: scale(1.0); }
+      100% { transform: scale(1.25); }
+    }
+
+    @keyframes spin-glow {
+      0% { transform: rotate(0deg) scale(1.1); }
+      100% { transform: rotate(360deg) scale(1.1); }
+    }
+
+    .status-text {
+      margin-top: 18px;
+      font-size: 1.05rem;
+      font-weight: 500;
+      color: var(--text);
+    }
+
+    .sub-status {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-top: 4px;
+    }
+
+    /* Live Speech Preview Bubble */
+    .live-preview {
+      width: 100%;
+      min-height: 48px;
+      margin: 15px 0;
+      padding: 12px 18px;
+      background: var(--card-bg);
+      border-radius: 14px;
+      font-size: 0.95rem;
+      color: #cbd5e1;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      transition: all 0.2s;
+    }
+
+    /* Conversation History Stream */
+    .conversation-container {
+      width: 100%;
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+      padding-bottom: 75px;
+    }
+
+    .bubble {
+      padding: 12px 16px;
+      border-radius: 16px;
+      max-width: 88%;
+      font-size: 0.92rem;
+      line-height: 1.45;
+      animation: fadeIn 0.25s ease-out;
+    }
+
+    .user-bubble {
+      align-self: flex-end;
+      background: #2563eb;
+      color: white;
+      border-bottom-right-radius: 4px;
+    }
+
+    .ai-bubble {
+      align-self: flex-start;
+      background: rgba(30, 41, 59, 0.9);
+      color: #f1f5f9;
+      border-bottom-left-radius: 4px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .bubble-meta {
+      font-size: 0.72rem;
+      color: rgba(255, 255, 255, 0.5);
+      margin-top: 6px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .replay-btn {
+      background: none;
+      border: none;
+      color: #93c5fd;
+      cursor: pointer;
+      font-size: 0.75rem;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Bottom Text Fallback Input */
+    .bottom-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      background: rgba(11, 15, 25, 0.95);
+      backdrop-filter: blur(12px);
+      padding: 10px 16px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+      display: flex;
+      justify-content: center;
+      z-index: 40;
+    }
+
+    .input-wrapper {
+      max-width: 600px;
+      width: 100%;
+      display: flex;
+      gap: 8px;
+    }
+
+    .text-input {
+      flex: 1;
+      background: rgba(30, 41, 59, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 24px;
+      padding: 10px 18px;
+      color: white;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .text-input:focus {
+      border-color: var(--primary);
+    }
+
+    .send-btn {
+      background: var(--primary);
+      color: white;
+      border: none;
+      width: 42px;
+      height: 42px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+    }
+
+    /* Slide-over Settings Modal */
+    .modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(4px);
+      z-index: 100;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+    }
+
+    .modal-content {
+      background: #1e293b;
+      width: 100%;
+      max-width: 550px;
+      border-top-left-radius: 24px;
+      border-top-right-radius: 24px;
+      padding: 24px;
+      max-height: 85vh;
+      overflow-y: auto;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      animation: slideUp 0.25s ease-out;
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 20px;
+    }
+
+    .form-group {
+      margin-bottom: 18px;
+    }
+
+    .form-group label {
+      display: block;
+      font-size: 0.85rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+    }
+
+    .form-control {
+      width: 100%;
+      padding: 10px 14px;
+      border-radius: 10px;
+      background: rgba(15, 23, 42, 0.8);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      color: white;
+      font-size: 0.9rem;
+      outline: none;
+    }
+
+    .btn-save {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 12px;
+      border-radius: 10px;
+      width: 100%;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 10px;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header -->
+  <header>
+    <div class="brand">
+      <div class="brand-icon">🎙️</div>
+      <span>Voice AI</span>
+    </div>
+
+    <div class="provider-pill" id="activeProviderPill" onclick="openSettings()">
+      <span id="providerDot">🟢</span>
+      <span id="providerText">Loading...</span>
+    </div>
+
+    <button class="settings-btn" onclick="openSettings()">⚙️</button>
+  </header>
+
+  <!-- Main Content -->
+  <main>
+    <!-- Center Voice Orb -->
+    <div class="orb-section">
+      <div class="orb-container" id="orbContainer">
+        <div class="orb-glow"></div>
+        <button class="orb-button" id="micBtn" onclick="toggleVoice()">
+          <span class="orb-icon" id="orbIcon">🎙️</span>
+        </button>
+      </div>
+
+      <div class="status-text" id="statusText">Tap to Talk</div>
+      <div class="sub-status" id="subStatusText">Supports English & 50+ languages</div>
+    </div>
+
+    <!-- Live Speech Text Preview -->
+    <div class="live-preview" id="livePreview">
+      Listening for your voice...
+    </div>
+
+    <!-- Transcript / History -->
+    <div class="conversation-container" id="chatContainer">
+      <div class="bubble ai-bubble">
+        👋 Hi! Tap the microphone above or type below to ask me anything.
+        <div class="bubble-meta"><span>Ready</span></div>
+      </div>
+    </div>
+  </main>
+
+  <!-- Bottom Text Input Fallback -->
+  <div class="bottom-bar">
+    <div class="input-wrapper">
+      <input type="text" class="text-input" id="textInput" placeholder="Type a message or tap mic above..." onkeydown="if(event.key==='Enter') sendTextMessage()">
+      <button class="send-btn" onclick="sendTextMessage()">➤</button>
+    </div>
+  </div>
+
+  <!-- Settings Modal -->
+  <div class="modal-overlay" id="settingsModal" onclick="if(event.target===this) closeSettings()">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3>⚙️ Voice AI Configuration</h3>
+        <button class="settings-btn" onclick="closeSettings()">✕</button>
+      </div>
+
+      <div class="form-group">
+        <label>Active Engine Provider</label>
+        <select class="form-control" id="providerSelect" onchange="onProviderChange()">
+          <option value="gemini">☁️ Google Gemini Cloud (Recommended for Mobile)</option>
+          <option value="local">🖥️ Local Device (Ollama qwen2.5-coder:3b)</option>
+          <option value="openai">☁️ OpenAI Cloud (gpt-4o-mini)</option>
+        </select>
+      </div>
+
+      <!-- Cloud API Key Input (Masked) -->
+      <div class="form-group" id="geminiKeyGroup">
+        <label>Google Gemini API Key (Saved in local .env - Never Committed)</label>
+        <input type="password" class="form-control" id="geminiKeyInput" placeholder="AIzaSy...">
+        <small style="color:#94a3b8; font-size:0.75rem;">Get a free key from <a href="https://aistudio.google.com/" target="_blank" style="color:#60a5fa;">Google AI Studio</a></small>
+      </div>
+
+      <div class="form-group" id="openaiKeyGroup" style="display:none;">
+        <label>OpenAI API Key</label>
+        <input type="password" class="form-control" id="openaiKeyInput" placeholder="sk-...">
+      </div>
+
+      <!-- Voice Selection -->
+      <div class="form-group">
+        <label>Spoken Voice Selection</label>
+        <select class="form-control" id="voiceSelect"></select>
+      </div>
+
+      <button class="btn-save" onclick="saveSettings()">Save & Apply</button>
+    </div>
+  </div>
+
+  <script>
+    // State
+    let currentProvider = "gemini";
+    let isRecording = false;
+    let isSpeaking = false;
+    let chatHistory = [];
+    let systemStatus = {};
+    let recognition = null;
+    let synth = window.speechSynthesis;
+    let availableVoices = [];
+
+    // Initialize Web Speech Recognition
+    function initSpeech() {
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SpeechRecognition) {
+        recognition = new SpeechRecognition();
+        recognition.continuous = false;
+        recognition.interimResults = true;
+        recognition.lang = 'en-US';
+
+        recognition.onstart = () => {
+          isRecording = true;
+          setOrbState("listening", "Listening...", "Speak clearly into your microphone");
+        };
+
+        recognition.onresult = (event) => {
+          let transcript = "";
+          for (let i = event.resultIndex; i < event.results.length; i++) {
+            transcript += event.results[i][0].transcript;
+          }
+          document.getElementById("livePreview").innerText = `"${transcript}"`;
+        };
+
+        recognition.onerror = (event) => {
+          console.warn("Speech error:", event.error);
+          isRecording = false;
+          setOrbState("idle", "Tap to Talk", "Microphone error or permission denied");
+        };
+
+        recognition.onend = () => {
+          isRecording = false;
+          const query = document.getElementById("livePreview").innerText.replace(/^"|"$/g, "").trim();
+          if (query && query !== "Listening for your voice...") {
+            processUserQuery(query);
+          } else {
+            setOrbState("idle", "Tap to Talk", "Tap again when ready");
+          }
+        };
+      } else {
+        document.getElementById("livePreview").innerText = "Speech recognition not supported in this browser. Use text input below.";
+      }
+    }
+
+    // Populate voices for TTS
+    function populateVoices() {
+      if (!synth) return;
+      availableVoices = synth.getVoices();
+      const select = document.getElementById("voiceSelect");
+      select.innerHTML = "";
+      
+      availableVoices.forEach((v, i) => {
+        const option = document.createElement("option");
+        option.value = i;
+        option.textContent = `${v.name} (${v.lang})`;
+        if (v.default || v.name.includes("Google") || v.name.includes("Samantha") || v.name.includes("Natural")) {
+          option.selected = true;
+        }
+        select.appendChild(option);
+      });
+    }
+
+    if (synth && synth.onvoiceschanged !== undefined) {
+      synth.onvoiceschanged = populateVoices;
+    }
+
+    // Load initial system status from server
+    async function loadStatus() {
+      try {
+        const res = await fetch("/api/status");
+        systemStatus = await res.json();
+        
+        currentProvider = systemStatus.default_provider || "gemini";
+        updateProviderPill();
+
+        document.getElementById("providerSelect").value = currentProvider;
+        if (systemStatus.gemini_configured) {
+          document.getElementById("geminiKeyInput").placeholder = systemStatus.gemini_masked;
+        }
+      } catch (e) {
+        console.error("Failed to load status:", e);
+      }
+    }
+
+    function updateProviderPill() {
+      const text = document.getElementById("providerText");
+      const dot = document.getElementById("providerDot");
+      
+      if (currentProvider === "local") {
+        text.innerText = `Local (${systemStatus.local_model || "3B"})`;
+        dot.innerText = systemStatus.local_available ? "🟢" : "🔴";
+      } else if (currentProvider === "gemini") {
+        text.innerText = "☁️ Gemini Cloud";
+        dot.innerText = systemStatus.gemini_configured ? "🟢" : "🟡 Key Needed";
+      } else {
+        text.innerText = "☁️ OpenAI";
+        dot.innerText = systemStatus.openai_configured ? "🟢" : "🟡 Key Needed";
+      }
+    }
+
+    // State machine visual updater
+    function setOrbState(state, title, subtitle) {
+      const container = document.getElementById("orbContainer");
+      const icon = document.getElementById("orbIcon");
+      const status = document.getElementById("statusText");
+      const sub = document.getElementById("subStatusText");
+
+      container.className = `orb-container ${state}`;
+      status.innerText = title;
+      sub.innerText = subtitle;
+
+      if (state === "listening") icon.innerText = "🛑";
+      else if (state === "thinking") icon.innerText = "⏳";
+      else if (state === "speaking") icon.innerText = "🔊";
+      else icon.innerText = "🎙️";
+    }
+
+    // Toggle Mic Button
+    function toggleVoice() {
+      // If AI is currently speaking, tap interrupts it
+      if (isSpeaking) {
+        stopSpeaking();
+        return;
+      }
+
+      if (isRecording) {
+        recognition.stop();
+      } else {
+        if (recognition) {
+          document.getElementById("livePreview").innerText = "Listening for your voice...";
+          recognition.start();
+        } else {
+          alert("Speech recognition is not available in this browser. Please use text input.");
+        }
+      }
+    }
+
+    // Process user query
+    async function processUserQuery(text) {
+      addMessage("user", text);
+      document.getElementById("livePreview").innerText = "Analyzing your question...";
+      setOrbState("thinking", "Thinking...", "Formulating response...");
+
+      try {
+        const res = await fetch("/api/chat", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: text,
+            provider: currentProvider,
+            history: chatHistory
+          })
+        });
+
+        if (!res.ok) {
+          const err = await res.json();
+          throw new Error(err.detail || "Error from server");
+        }
+
+        const data = await res.json();
+        addMessage("assistant", data.response, `${data.provider} • ${data.latency_ms}ms`);
+        speakText(data.response);
+
+      } catch (err) {
+        addMessage("assistant", `⚠️ ${err.message}`, "Error");
+        setOrbState("idle", "Tap to Talk", "Ready");
+      }
+    }
+
+    // Speak text with browser SpeechSynthesis
+    function speakText(text) {
+      if (!synth) {
+        setOrbState("idle", "Tap to Talk", "Ready");
+        return;
+      }
+
+      stopSpeaking();
+
+      // Clean markdown tags for natural speech
+      const cleanText = text.replace(/[*_#`]/g, "");
+      const utterance = new SpeechSynthesisUtterance(cleanText);
+
+      const voiceIdx = document.getElementById("voiceSelect").value;
+      if (availableVoices[voiceIdx]) {
+        utterance.voice = availableVoices[voiceIdx];
+      }
+      utterance.rate = 1.05;
+
+      utterance.onstart = () => {
+        isSpeaking = true;
+        setOrbState("speaking", "Speaking...", "Tap orb to interrupt");
+      };
+
+      utterance.onend = () => {
+        isSpeaking = false;
+        setOrbState("idle", "Tap to Talk", "Ready for next question");
+      };
+
+      utterance.onerror = () => {
+        isSpeaking = false;
+        setOrbState("idle", "Tap to Talk", "Ready");
+      };
+
+      synth.speak(utterance);
+    }
+
+    function stopSpeaking() {
+      if (synth) synth.cancel();
+      isSpeaking = false;
+      setOrbState("idle", "Tap to Talk", "Interrupted");
+    }
+
+    // Add chat bubble
+    function addMessage(role, content, meta = "") {
+      chatHistory.push({ role, content });
+      const container = document.getElementById("chatContainer");
+
+      const bubble = document.createElement("div");
+      bubble.className = `bubble ${role === 'user' ? 'user-bubble' : 'ai-bubble'}`;
+      
+      const textSpan = document.createElement("div");
+      textSpan.innerText = content;
+      bubble.appendChild(textSpan);
+
+      if (meta || role === 'assistant') {
+        const metaDiv = document.createElement("div");
+        metaDiv.className = "bubble-meta";
+        metaDiv.innerHTML = `<span>${meta}</span>${role === 'assistant' ? '<button class="replay-btn" onclick="speakText(this.parentElement.previousSibling.innerText)">🔊 Replay</button>' : ''}`;
+        bubble.appendChild(metaDiv);
+      }
+
+      container.appendChild(bubble);
+      container.scrollTop = container.scrollHeight;
+    }
+
+    function sendTextMessage() {
+      const input = document.getElementById("textInput");
+      const val = input.value.trim();
+      if (!val) return;
+      input.value = "";
+      processUserQuery(val);
+    }
+
+    // Settings Modal Handlers
+    function openSettings() {
+      document.getElementById("settingsModal").classList.add("open");
+    }
+
+    function closeSettings() {
+      document.getElementById("settingsModal").classList.remove("open");
+    }
+
+    function onProviderChange() {
+      const val = document.getElementById("providerSelect").value;
+      document.getElementById("geminiKeyGroup").style.display = val === "gemini" ? "block" : "none";
+      document.getElementById("openaiKeyGroup").style.display = val === "openai" ? "block" : "none";
+    }
+
+    async function saveSettings() {
+      const prov = document.getElementById("providerSelect").value;
+      const gemKey = document.getElementById("geminiKeyInput").value.trim();
+      const oaiKey = document.getElementById("openaiKeyInput").value.trim();
+
+      const payload = { default_provider: prov };
+      if (gemKey) payload.gemini_api_key = gemKey;
+      if (oaiKey) payload.openai_api_key = oaiKey;
+
+      try {
+        await fetch("/api/config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+        currentProvider = prov;
+        await loadStatus();
+        closeSettings();
+      } catch (e) {
+        alert("Failed to save config: " + e);
+      }
+    }
+
+    // Initialization
+    window.addEventListener("DOMContentLoaded", () => {
+      initSpeech();
+      populateVoices();
+      loadStatus();
+    });
+  </script>
+</body>
+</html>

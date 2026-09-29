@@ -1,0 +1,16 @@
+{
+  "name": "Voice AI Assistant",
+  "short_name": "VoiceAI",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "description": "Smart Voice Assistant powered by Local LLM and Cloud AI",
+  "icons": [
+    {
+      "src": "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='45' fill='%233b82f6'/><path d='M50 30 v25 M40 45 a10 10 0 0 0 20 0' stroke='white' stroke-width='5' fill='none'/><rect x='48' y='55' width='4' height='15' fill='white'/><rect x='40' y='70' width='20' height='4' fill='white'/></svg>",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml"
+    }
+  ]
+}
