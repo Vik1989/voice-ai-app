@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel
 from dotenv import load_dotenv, set_key
+import telemetry
 
 # Load environment variables from .env
 ENV_FILE = os.path.join(os.path.dirname(__file__), ".env")
@@ -36,11 +37,22 @@ class ChatRequest(BaseModel):
     provider: Optional[str] = "gemini"  # "gemini", "openai", or "local"
     model: Optional[str] = None
     history: Optional[List[Dict[str, str]]] = []
+    session_id: Optional[str] = None
+    user_id: Optional[str] = None
+    client_type: Optional[str] = "web"
 
 class ConfigUpdateRequest(BaseModel):
     gemini_api_key: Optional[str] = None
     openai_api_key: Optional[str] = None
     default_provider: Optional[str] = None
+    langfuse_public_key: Optional[str] = None
+    langfuse_secret_key: Optional[str] = None
+    langfuse_host: Optional[str] = None
+
+class FeedbackRequest(BaseModel):
+    trace_id: str
+    score: float  # 1.0 (thumbs up) or 0.0 (thumbs down)
+    comment: Optional[str] = None
 
 def get_local_ollama_models(ollama_url: str) -> List[str]:
     try:
@@ -86,7 +98,8 @@ def get_system_status():
         "default_provider": default_prov,
         "gemini_model": os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
         "openai_model": os.getenv("OPENAI_MODEL", "gpt-4o-mini"),
-        "local_model": os.getenv("LOCAL_MODEL", "qwen2.5-coder:3b")
+        "local_model": os.getenv("LOCAL_MODEL", "qwen2.5-coder:3b"),
+        "langfuse": telemetry.get_telemetry_status()
     }
 
 @app.post("/api/config")
@@ -97,10 +110,25 @@ def update_config(req: ConfigUpdateRequest):
         set_key(ENV_FILE, "OPENAI_API_KEY", req.openai_api_key.strip())
     if req.default_provider is not None:
         set_key(ENV_FILE, "DEFAULT_PROVIDER", req.default_provider.strip())
+    if req.langfuse_public_key is not None:
+        set_key(ENV_FILE, "LANGFUSE_PUBLIC_KEY", req.langfuse_public_key.strip())
+    if req.langfuse_secret_key is not None:
+        set_key(ENV_FILE, "LANGFUSE_SECRET_KEY", req.langfuse_secret_key.strip())
+    if req.langfuse_host is not None:
+        set_key(ENV_FILE, "LANGFUSE_HOST", req.langfuse_host.strip())
     
-    # Reload environment
+    # Reload environment and telemetry client
     load_dotenv(ENV_FILE, override=True)
+    telemetry.reload_client()
     return {"status": "success", "message": "Configuration updated successfully."}
+
+@app.post("/api/feedback")
+def submit_feedback(req: FeedbackRequest):
+    success = telemetry.record_feedback(req.trace_id, req.score, req.comment)
+    return {
+        "status": "success" if success else "unconfigured",
+        "message": "Feedback recorded." if success else "Langfuse is not configured or trace not found."
+    }
 
 @app.post("/api/chat")
 def handle_chat(req: ChatRequest):
@@ -111,6 +139,8 @@ def handle_chat(req: ChatRequest):
 
     if not user_query:
         raise HTTPException(status_code=400, detail="Message cannot be empty.")
+
+    client_info = {"client_type": req.client_type or "web"}
 
     # 1. LOCAL OLLAMA ROUTE
     if provider == "local":
@@ -135,13 +165,45 @@ def handle_chat(req: ChatRequest):
                 data = json.loads(resp.read().decode("utf-8"))
                 reply_text = data.get("message", {}).get("content", "")
                 elapsed_ms = int((time.time() - t0) * 1000)
+
+                prompt_tokens = data.get("prompt_eval_count", 0)
+                completion_tokens = data.get("eval_count", 0)
+                usage = {
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": completion_tokens,
+                    "total_tokens": prompt_tokens + completion_tokens
+                }
+
+                trace_id = telemetry.log_turn(
+                    session_id=req.session_id,
+                    user_id=req.user_id,
+                    provider="local",
+                    model=model,
+                    prompt_input=messages,
+                    response_text=reply_text,
+                    latency_ms=elapsed_ms,
+                    usage=usage,
+                    client_info=client_info
+                )
+
                 return {
                     "response": reply_text,
                     "provider": "Local Device (Ollama)",
                     "model": model,
-                    "latency_ms": elapsed_ms
+                    "latency_ms": elapsed_ms,
+                    "trace_id": trace_id
                 }
         except Exception as e:
+            telemetry.log_turn(
+                session_id=req.session_id,
+                user_id=req.user_id,
+                provider="local",
+                model=model,
+                prompt_input=messages,
+                latency_ms=int((time.time() - t0) * 1000),
+                error=str(e),
+                client_info=client_info
+            )
             raise HTTPException(status_code=502, detail=f"Local Ollama error: {e}. Is Ollama running?")
 
     # 2. GOOGLE GEMINI CLOUD ROUTE
@@ -188,16 +250,57 @@ def handle_chat(req: ChatRequest):
                     raise ValueError("No response returned from Gemini API.")
                 reply_text = candidates[0].get("content", {}).get("parts", [{}])[0].get("text", "")
                 elapsed_ms = int((time.time() - t0) * 1000)
+
+                usage_meta = data.get("usageMetadata", {})
+                usage = {
+                    "prompt_tokens": usage_meta.get("promptTokenCount", 0),
+                    "completion_tokens": usage_meta.get("candidatesTokenCount", 0),
+                    "total_tokens": usage_meta.get("totalTokenCount", 0)
+                }
+
+                trace_id = telemetry.log_turn(
+                    session_id=req.session_id,
+                    user_id=req.user_id,
+                    provider="gemini",
+                    model=model,
+                    prompt_input=contents,
+                    response_text=reply_text,
+                    latency_ms=elapsed_ms,
+                    usage=usage,
+                    client_info=client_info
+                )
+
                 return {
                     "response": reply_text,
                     "provider": "Google Gemini",
                     "model": model,
-                    "latency_ms": elapsed_ms
+                    "latency_ms": elapsed_ms,
+                    "trace_id": trace_id
                 }
         except urllib.error.HTTPError as e:
             err_body = e.read().decode("utf-8", errors="replace")
+            telemetry.log_turn(
+                session_id=req.session_id,
+                user_id=req.user_id,
+                provider="gemini",
+                model=model,
+                prompt_input=contents,
+                latency_ms=int((time.time() - t0) * 1000),
+                error=f"Gemini API Error {e.code}: {err_body}",
+                client_info=client_info
+            )
             raise HTTPException(status_code=e.code, detail=f"Gemini API Error: {err_body}")
         except Exception as e:
+            telemetry.log_turn(
+                session_id=req.session_id,
+                user_id=req.user_id,
+                provider="gemini",
+                model=model,
+                prompt_input=contents,
+                latency_ms=int((time.time() - t0) * 1000),
+                error=str(e),
+                client_info=client_info
+            )
             raise HTTPException(status_code=500, detail=f"Gemini Request Failed: {e}")
 
     # 3. OPENAI CLOUD ROUTE
@@ -230,13 +333,44 @@ def handle_chat(req: ChatRequest):
                 data = json.loads(resp.read().decode("utf-8"))
                 reply_text = data.get("choices", [{}])[0].get("message", {}).get("content", "")
                 elapsed_ms = int((time.time() - t0) * 1000)
+
+                usage_meta = data.get("usage", {})
+                usage = {
+                    "prompt_tokens": usage_meta.get("prompt_tokens", 0),
+                    "completion_tokens": usage_meta.get("completion_tokens", 0),
+                    "total_tokens": usage_meta.get("total_tokens", 0)
+                }
+
+                trace_id = telemetry.log_turn(
+                    session_id=req.session_id,
+                    user_id=req.user_id,
+                    provider="openai",
+                    model=model,
+                    prompt_input=messages,
+                    response_text=reply_text,
+                    latency_ms=elapsed_ms,
+                    usage=usage,
+                    client_info=client_info
+                )
+
                 return {
                     "response": reply_text,
                     "provider": "OpenAI",
                     "model": model,
-                    "latency_ms": elapsed_ms
+                    "latency_ms": elapsed_ms,
+                    "trace_id": trace_id
                 }
         except Exception as e:
+            telemetry.log_turn(
+                session_id=req.session_id,
+                user_id=req.user_id,
+                provider="openai",
+                model=model,
+                prompt_input=messages,
+                latency_ms=int((time.time() - t0) * 1000),
+                error=str(e),
+                client_info=client_info
+            )
             raise HTTPException(status_code=500, detail=f"OpenAI API Error: {e}")
 
     else:

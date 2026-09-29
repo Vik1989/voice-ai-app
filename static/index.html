@@ -302,6 +302,28 @@
       font-size: 0.75rem;
     }
 
+    .feedback-btn {
+      background: none;
+      border: none;
+      color: #cbd5e1;
+      cursor: pointer;
+      font-size: 0.78rem;
+      padding: 2px 4px;
+      border-radius: 4px;
+      opacity: 0.6;
+      transition: all 0.15s ease;
+    }
+
+    .feedback-btn:hover {
+      opacity: 1;
+      transform: scale(1.15);
+    }
+
+    .feedback-btn.active {
+      opacity: 1;
+      background: rgba(255, 255, 255, 0.15);
+    }
+
     @keyframes fadeIn {
       from { opacity: 0; transform: translateY(6px); }
       to { opacity: 1; transform: translateY(0); }
@@ -526,10 +548,40 @@
         <input type="password" class="form-control" id="openaiKeyInput" placeholder="sk-...">
       </div>
 
-      <!-- Voice Selection -->
+      <!-- Spoken Voice Selection -->
       <div class="form-group">
         <label>Spoken Voice Selection</label>
         <select class="form-control" id="voiceSelect"></select>
+      </div>
+
+      <hr style="border:none; border-top:1px solid rgba(255,255,255,0.1); margin: 20px 0;">
+
+      <!-- Langfuse Observability & Analytics -->
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+        <label style="font-weight:700; color:#cbd5e1; margin:0; font-size:0.9rem;">📊 Langfuse Observability</label>
+        <span id="langfuseStatusBadge" style="font-size:0.75rem; padding:3px 8px; border-radius:12px; background:rgba(255,255,255,0.08); color:#94a3b8;">⚪ Not Set</span>
+      </div>
+
+      <div class="form-group">
+        <label>Langfuse Public Key</label>
+        <input type="text" class="form-control" id="langfusePublicKeyInput" placeholder="pk-lf-...">
+      </div>
+
+      <div class="form-group">
+        <label>Langfuse Secret Key</label>
+        <input type="password" class="form-control" id="langfuseSecretKeyInput" placeholder="sk-lf-...">
+      </div>
+
+      <div class="form-group">
+        <label>Langfuse Host</label>
+        <select class="form-control" id="langfuseHostSelect">
+          <option value="https://cloud.langfuse.com">Langfuse Cloud (EU) - cloud.langfuse.com</option>
+          <option value="https://us.cloud.langfuse.com">Langfuse Cloud (US) - us.cloud.langfuse.com</option>
+          <option value="http://localhost:3000">Self-Hosted Local - localhost:3000</option>
+        </select>
+        <small style="color:#94a3b8; font-size:0.75rem; margin-top:4px; display:block;">
+          Track token costs, latencies & traces. Sign up free at <a href="https://cloud.langfuse.com" target="_blank" style="color:#60a5fa;">cloud.langfuse.com</a>
+        </small>
       </div>
 
       <button class="btn-save" onclick="saveSettings()">Save & Apply</button>
@@ -546,6 +598,25 @@
     let recognition = null;
     let synth = window.speechSynthesis;
     let availableVoices = [];
+
+    // Session & User Tracking for Langfuse
+    function getUserId() {
+      let uid = localStorage.getItem("voice_ai_user_id");
+      if (!uid) {
+        uid = "usr_" + Math.random().toString(36).substring(2, 10);
+        localStorage.setItem("voice_ai_user_id", uid);
+      }
+      return uid;
+    }
+
+    function getSessionId() {
+      let sid = sessionStorage.getItem("voice_ai_session_id");
+      if (!sid) {
+        sid = "sess_" + Math.random().toString(36).substring(2, 10);
+        sessionStorage.setItem("voice_ai_session_id", sid);
+      }
+      return sid;
+    }
 
     // Initialize Web Speech Recognition
     function initSpeech() {
@@ -624,6 +695,28 @@
         if (systemStatus.gemini_configured) {
           document.getElementById("geminiKeyInput").placeholder = systemStatus.gemini_masked;
         }
+        if (systemStatus.openai_configured) {
+          document.getElementById("openaiKeyInput").placeholder = systemStatus.openai_masked;
+        }
+
+        // Langfuse Observability Status
+        if (systemStatus.langfuse) {
+          const lf = systemStatus.langfuse;
+          const badge = document.getElementById("langfuseStatusBadge");
+          if (lf.enabled) {
+            badge.innerText = "🟢 Active";
+            badge.style.background = "rgba(16, 185, 129, 0.2)";
+            badge.style.color = "#6ee7b7";
+            document.getElementById("langfusePublicKeyInput").placeholder = lf.public_key_masked || "Configured";
+          } else {
+            badge.innerText = "⚪ Not Set";
+            badge.style.background = "rgba(255, 255, 255, 0.08)";
+            badge.style.color = "#94a3b8";
+          }
+          if (lf.host) {
+            document.getElementById("langfuseHostSelect").value = lf.host;
+          }
+        }
       } catch (e) {
         console.error("Failed to load status:", e);
       }
@@ -664,7 +757,6 @@
 
     // Toggle Mic Button
     function toggleVoice() {
-      // If AI is currently speaking, tap interrupts it
       if (isSpeaking) {
         stopSpeaking();
         return;
@@ -688,6 +780,8 @@
       document.getElementById("livePreview").innerText = "Analyzing your question...";
       setOrbState("thinking", "Thinking...", "Formulating response...");
 
+      const isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
       try {
         const res = await fetch("/api/chat", {
           method: "POST",
@@ -695,7 +789,10 @@
           body: JSON.stringify({
             message: text,
             provider: currentProvider,
-            history: chatHistory
+            history: chatHistory.map(h => ({ role: h.role, content: h.content })),
+            session_id: getSessionId(),
+            user_id: getUserId(),
+            client_type: isMobile ? "mobile_pwa" : "desktop_web"
           })
         });
 
@@ -705,7 +802,7 @@
         }
 
         const data = await res.json();
-        addMessage("assistant", data.response, `${data.provider} • ${data.latency_ms}ms`);
+        addMessage("assistant", data.response, `${data.provider} • ${data.latency_ms}ms`, data.trace_id);
         speakText(data.response);
 
       } catch (err) {
@@ -723,7 +820,6 @@
 
       stopSpeaking();
 
-      // Clean markdown tags for natural speech
       const cleanText = text.replace(/[*_#`]/g, "");
       const utterance = new SpeechSynthesisUtterance(cleanText);
 
@@ -758,8 +854,8 @@
     }
 
     // Add chat bubble
-    function addMessage(role, content, meta = "") {
-      chatHistory.push({ role, content });
+    function addMessage(role, content, meta = "", traceId = null) {
+      chatHistory.push({ role, content, trace_id: traceId });
       const container = document.getElementById("chatContainer");
 
       const bubble = document.createElement("div");
@@ -772,12 +868,47 @@
       if (meta || role === 'assistant') {
         const metaDiv = document.createElement("div");
         metaDiv.className = "bubble-meta";
-        metaDiv.innerHTML = `<span>${meta}</span>${role === 'assistant' ? '<button class="replay-btn" onclick="speakText(this.parentElement.previousSibling.innerText)">🔊 Replay</button>' : ''}`;
+
+        let actionButtons = '';
+        if (role === 'assistant') {
+          actionButtons += `<button class="replay-btn" onclick="speakText(this.parentElement.parentElement.previousSibling.innerText)">🔊 Replay</button>`;
+          if (traceId) {
+            actionButtons += `
+              <button class="feedback-btn" title="Good response" onclick="submitFeedback('${traceId}', 1.0, this)">👍</button>
+              <button class="feedback-btn" title="Needs improvement" onclick="submitFeedback('${traceId}', 0.0, this)">👎</button>
+            `;
+          }
+        }
+
+        metaDiv.innerHTML = `<span>${meta}</span><div style="display:flex; gap:6px; align-items:center;">${actionButtons}</div>`;
         bubble.appendChild(metaDiv);
       }
 
       container.appendChild(bubble);
       container.scrollTop = container.scrollHeight;
+    }
+
+    async function submitFeedback(traceId, score, btn) {
+      if (!traceId) return;
+      try {
+        const parent = btn.parentElement;
+        const allFeedbackBtns = parent.querySelectorAll('.feedback-btn');
+        allFeedbackBtns.forEach(b => { b.disabled = true; b.style.opacity = '0.3'; });
+        btn.style.opacity = '1';
+        btn.classList.add('active');
+
+        const res = await fetch("/api/feedback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ trace_id: traceId, score: score })
+        });
+        const data = await res.json();
+        if (data.status === "success") {
+          btn.title = "Feedback saved in Langfuse!";
+        }
+      } catch (e) {
+        console.warn("Failed to submit feedback:", e);
+      }
     }
 
     function sendTextMessage() {
@@ -807,10 +938,16 @@
       const prov = document.getElementById("providerSelect").value;
       const gemKey = document.getElementById("geminiKeyInput").value.trim();
       const oaiKey = document.getElementById("openaiKeyInput").value.trim();
+      const lfPubKey = document.getElementById("langfusePublicKeyInput").value.trim();
+      const lfSecKey = document.getElementById("langfuseSecretKeyInput").value.trim();
+      const lfHost = document.getElementById("langfuseHostSelect").value;
 
       const payload = { default_provider: prov };
       if (gemKey) payload.gemini_api_key = gemKey;
       if (oaiKey) payload.openai_api_key = oaiKey;
+      if (lfPubKey) payload.langfuse_public_key = lfPubKey;
+      if (lfSecKey) payload.langfuse_secret_key = lfSecKey;
+      if (lfHost) payload.langfuse_host = lfHost;
 
       try {
         await fetch("/api/config", {
