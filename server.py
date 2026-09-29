@@ -1,3 +1,10 @@
+"""
+Voice AI Assistant - Dual-Engine Voice Application
+Copyright (c) 2026 Vikash Kumar (@vik1989). All rights reserved.
+Author: Vikash Kumar <vvik10072@gmail.com>
+Repository: https://github.com/vik1989/voice-ai-app
+"""
+
 import os
 import time
 import json

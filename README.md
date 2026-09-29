@@ -139,5 +139,14 @@ npx localtunnel --port 8000
 
 ---
 
+## 👤 Author & Ownership
+
+* **Creator & Maintainer:** **Vikash Kumar** ([@vik1989](https://github.com/vik1989))
+* **Email:** [vvik10072@gmail.com](mailto:vvik10072@gmail.com)
+* **GitHub Repository:** [https://github.com/vik1989/voice-ai-app](https://github.com/vik1989/voice-ai-app)
+* **Copyright:** © 2026 Vikash Kumar. All rights reserved.
+
+---
+
 ## 📄 License
-This project is open-source under the [MIT License](LICENSE).
+This project is open-source under the [MIT License](LICENSE) with attribution requirements described in the [NOTICE](NOTICE) file.
