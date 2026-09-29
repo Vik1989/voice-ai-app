@@ -131,6 +131,28 @@ npx localtunnel --port 8000
 
 ---
 
+## 🌿 Git Branching & Pull Request Workflow
+
+This repository uses a Git Flow branching model:
+* **`main` (Protected Release Branch):** Production-ready code only. Direct pushes and branch deletions are strictly disabled.
+* **`develop` (Active Working Branch):** Day-to-day feature development, testing, and enhancements.
+
+### Contributing & Merging:
+1. Work on the `develop` branch (or create a dedicated feature branch from `develop`).
+2. Test changes locally.
+3. Open a **Pull Request** on GitHub targeting `develop` $\rightarrow$ `main`.
+4. Review and merge the Pull Request to release changes to production.
+
+```bash
+# Check out develop branch
+git checkout develop
+
+# Make changes, commit, and push
+git add .
+git commit -m "Your feature description"
+git push origin develop
+```
+
 ## 🗺️ Roadmap (Phase 2)
 - [ ] Tool calling / Function calling (Live weather, search, calculations).
 - [ ] Dedicated neural TTS backend (Kokoro-82M / ElevenLabs) for studio voice quality.
